@@ -1,0 +1,181 @@
+<html>
+<style>
+    canvas {
+        border: 1px solid black;
+    }
+
+    #whiteboard_pending {
+        position: relative;
+        top: -601px;
+        pointer-events: none;
+    }
+</style>
+
+<body>
+    <canvas id="whiteboard" width="800" height="600"></canvas>
+    <br>
+    <canvas id="whiteboard_pending" width="800" height="600"></canvas>
+</body>
+<script>
+    function abs_to_rel(n, offset) {
+        return (n - offset) / viewbox_scale;
+    }
+
+    function rel_to_abs(n, offset) {
+        return n * viewbox_scale + offset;
+    }
+
+    function _set_style(ctx, style) {
+        ctx.strokeStyle = style.strokeStyle;
+        ctx.lineWidth = style.lineWidth;
+        ctx.lineJoin = style.lineJoin;
+        ctx.lineCap = style.lineCap;
+    }
+
+    function drawPaths(paths, canvas) {
+        var ctx = canvas.getContext('2d');
+
+        paths.forEach(path => {
+            var style = path.style;
+            var points = path.points;
+
+            // set style
+            _set_style(ctx, style);
+
+            // draw first point
+            ctx.moveTo(abs_to_rel(points[0].x, viewbox_offset[0]), abs_to_rel(points[0].y, viewbox_offset[1]));
+            ctx.beginPath();
+
+            // draw the rest
+            points.forEach(point => {
+                ctx.lineTo(abs_to_rel(point.x, viewbox_offset[0]), abs_to_rel(point.y, viewbox_offset[1]));
+            });
+
+            // end
+            ctx.stroke();
+        });
+    }
+
+    function updateCanvas(paths, canvas) {
+        var ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawPaths(paths, canvas);
+    }
+
+    function addDrawPoint(e) {
+        var rect = whiteboard.getBoundingClientRect();
+        var x = e.clientX - rect.left;
+        var y = e.clientY - rect.top;
+
+        var point = {
+            x: rel_to_abs(x, viewbox_offset[0]),
+            y: rel_to_abs(y, viewbox_offset[1])
+        };
+
+        drawPath_pending.points.push(point);
+
+        updateCanvas([drawPath_pending], whiteboard_pending);
+
+        return point;
+    }
+
+    var viewbox_offset = [0, 0];
+    var viewbox_scale = 1;
+    var whiteboard_paths = [];  // all paths on the whiteboard
+    var drawPath_pending = {};  // contains all the point info for the current drawing path 
+
+    function _start_draw(event, style) {
+        if (style === undefined) {
+            style = {
+                strokeStyle: 'black',
+                lineWidth: 2,
+                lineJoin: 'round',
+                lineCap: 'round'
+            };
+        }
+
+        drawPath_pending = {
+            style: style,
+            points: []
+        };
+        addDrawPoint(event);
+
+        function _handle_mousemove(e) {
+            addDrawPoint(e);
+        }
+
+        document.addEventListener('mousemove', _handle_mousemove);
+        document.addEventListener('mouseup', function (e) {
+            document.removeEventListener('mousemove', _handle_mousemove);
+            document.removeEventListener('mouseup', arguments.callee);  // remove itself
+
+            // save the path
+            whiteboard_paths.push(drawPath_pending);
+            updateCanvas([], whiteboard_pending);  // clear pending path
+            updateCanvas(whiteboard_paths, whiteboard);    // update wb
+        });
+    }
+
+    function _move_viewbox(event) {
+        event.preventDefault();
+
+        var prevX, prevY;
+        prevX = event.clientX;
+        prevY = event.clientY;
+
+        function _handle_mousemove(e) {
+            e.preventDefault();
+
+            var dx = e.clientX - prevX;
+            var dy = e.clientY - prevY;
+
+            prevX = e.clientX;
+            prevY = e.clientY;
+
+            viewbox_offset[0] -= dx;
+            viewbox_offset[1] -= dy;
+
+            updateCanvas(whiteboard_paths, whiteboard);
+        }
+
+        document.addEventListener('mousemove', _handle_mousemove);
+        document.addEventListener('mouseup', function (e) {
+            document.removeEventListener('mousemove', _handle_mousemove);
+            document.removeEventListener('mouseup', arguments.callee);  // remove itself
+        });
+    }
+
+    whiteboard.addEventListener('mousedown', function (e) {
+        if (e.button === 0) {
+            // left click: start drawing
+            _start_draw(e);
+        } else if (e.button === 1) {
+            // middle click: move viewbox
+            _move_viewbox(e);
+        } else if (e.button === 2) {
+            // right click: eraser
+            // _start_draw(e, {
+            //     strokeStyle: 'white',
+            //     lineWidth: 10,
+            //     lineJoin: 'round',
+            //     lineCap: 'round'
+            // });
+        }
+    });
+    whiteboard.addEventListener('wheel', function (e) {
+        e.preventDefault();
+
+        var scale = 1 + e.deltaY / 1000;
+        viewbox_scale *= scale;
+
+        var x = e.clientX - whiteboard.getBoundingClientRect().left;
+        var y = e.clientY - whiteboard.getBoundingClientRect().top;
+
+        viewbox_offset[0] = x - (x - viewbox_offset[0]) * scale;
+        viewbox_offset[1] = y - (y - viewbox_offset[1]) * scale;
+
+        updateCanvas(whiteboard_paths, whiteboard);
+    });
+</script>
+
+</html>
