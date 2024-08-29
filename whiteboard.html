@@ -1,17 +1,29 @@
 <html>
 <style>
+    body {
+        user-select: none;
+        overflow: hidden;
+    }
+
     canvas {
         border: 1px solid black;
     }
 
+    #whiteboard {
+        position: relative;
+        top: -600px;
+    }
+
     #whiteboard_pending {
         position: relative;
-        top: -601px;
+        top: -1201px;
         pointer-events: none;
     }
 </style>
 
 <body>
+    <canvas id="whiteboard_grid" width="800" height="600"></canvas>
+    <br>
     <canvas id="whiteboard" width="800" height="600"></canvas>
     <br>
     <canvas id="whiteboard_pending" width="800" height="600"></canvas>
@@ -43,8 +55,8 @@
             _set_style(ctx, style);
 
             // draw first point
-            ctx.moveTo(abs_to_rel(points[0].x, viewbox_offset[0]), abs_to_rel(points[0].y, viewbox_offset[1]));
             ctx.beginPath();
+            ctx.moveTo(abs_to_rel(points[0].x, viewbox_offset[0]), abs_to_rel(points[0].y, viewbox_offset[1]));
 
             // draw the rest
             points.forEach(point => {
@@ -62,20 +74,64 @@
         drawPaths(paths, canvas);
     }
 
+    function updateGrid() {
+        var canvas = whiteboard_grid;
+        var ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // calc grid size
+        var scale = viewbox_scale < 1 ? 1 / viewbox_scale : viewbox_scale;
+        var grid_size = (40 * scale) % 40 + 20;
+        ctx.strokeStyle = '#e6e6e6';
+        ctx.lineWidth = 1;
+
+        for (var x = -(viewbox_offset[0] % grid_size); x < canvas.width; x += grid_size) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, canvas.height);
+            ctx.stroke();
+        }
+
+        for (var y = -(viewbox_offset[1] % grid_size); y < canvas.height; y += grid_size) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(canvas.width, y);
+            ctx.stroke();
+        }
+    }
+
     function addDrawPoint(e) {
         var rect = whiteboard.getBoundingClientRect();
         var x = e.clientX - rect.left;
         var y = e.clientY - rect.top;
 
+        // add point
         var point = {
             x: rel_to_abs(x, viewbox_offset[0]),
             y: rel_to_abs(y, viewbox_offset[1])
         };
-
         drawPath_pending.points.push(point);
 
-        updateCanvas([drawPath_pending], whiteboard_pending);
+        // update boundary
+        // drawPath_pending.bound[0] = Math.min(drawPath_pending.bound[0], point.x);
+        // drawPath_pending.bound[1] = Math.min(drawPath_pending.bound[1], point.y);
+        // drawPath_pending.bound[2] = Math.max(drawPath_pending.bound[2], point.x);
+        // drawPath_pending.bound[3] = Math.max(drawPath_pending.bound[3], point.y);
 
+        // draw the new point on pending canvas
+        var ctx = whiteboard_pending.getContext('2d');
+        var p0 = drawPath_pending.points[drawPath_pending.points.length - 2];
+        var p1 = point;
+
+        if (p0 !== undefined) {
+            _set_style(ctx, drawPath_pending.style);
+            ctx.beginPath();
+            ctx.moveTo(abs_to_rel(p0.x, viewbox_offset[0]), abs_to_rel(p0.y, viewbox_offset[1]));
+            ctx.lineTo(abs_to_rel(p1.x, viewbox_offset[0]), abs_to_rel(p1.y, viewbox_offset[1]));
+            ctx.stroke();
+        }
+
+        // return
         return point;
     }
 
@@ -96,7 +152,8 @@
 
         drawPath_pending = {
             style: style,
-            points: []
+            points: [],
+            // bound: [0, 0, 0, 0]
         };
         addDrawPoint(event);
 
@@ -112,7 +169,7 @@
             // save the path
             whiteboard_paths.push(drawPath_pending);
             updateCanvas([], whiteboard_pending);  // clear pending path
-            updateCanvas(whiteboard_paths, whiteboard);    // update wb
+            drawPaths([drawPath_pending], whiteboard);    // update wb
         });
     }
 
@@ -136,6 +193,7 @@
             viewbox_offset[1] -= dy;
 
             updateCanvas(whiteboard_paths, whiteboard);
+            updateGrid();
         }
 
         document.addEventListener('mousemove', _handle_mousemove);
@@ -175,7 +233,14 @@
         viewbox_offset[1] = y - (y - viewbox_offset[1]) * scale;
 
         updateCanvas(whiteboard_paths, whiteboard);
+        updateGrid();
     });
+
+    function init() {
+        updateGrid();
+    }
+
+    init();
 </script>
 
 </html>
